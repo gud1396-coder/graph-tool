@@ -1,0 +1,186 @@
+:root {
+  --ink: #1b1b1b;
+  --line: #d4d4d4;
+  --bg: #f6f6f4;
+  --panel: #ffffff;
+  --accent: #2b5d8a;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font: 14px/1.5 -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  color: var(--ink);
+  background: var(--bg);
+}
+
+main {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 20px;
+  padding: 20px;
+  align-items: start;
+}
+
+h1 { font-size: 16px; margin: 0 0 14px; }
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.field { display: block; margin-bottom: 14px; }
+
+fieldset.field {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px 12px 12px;
+}
+
+legend { font-weight: 600; padding: 0 4px; }
+
+label { display: block; margin-bottom: 8px; }
+
+label > span { display: block; margin-bottom: 4px; }
+
+input[type="number"], input[type="text"], select, textarea {
+  width: 100%;
+  padding: 5px 6px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  font: inherit;
+  background: #fff;
+}
+
+textarea { font-family: "SF Mono", Menlo, Consolas, monospace; resize: vertical; }
+
+.grid2, .grid4 { display: grid; gap: 8px; }
+.grid2 { grid-template-columns: 1fr 1fr; }
+.grid4 { grid-template-columns: 1fr 1fr; }
+
+.checkbox { display: flex; align-items: center; gap: 6px; }
+.checkbox input { width: auto; }
+
+.buttons { display: flex; gap: 8px; margin-top: 4px; }
+
+button {
+  flex: 1;
+  padding: 8px 10px;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  cursor: pointer;
+}
+
+button:hover { filter: brightness(1.08); }
+
+.error {
+  margin: -6px 0 12px;
+  padding: 8px 10px;
+  border-radius: 4px;
+  background: #fdecec;
+  color: #8a2b2b;
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+  white-space: pre-wrap;
+}
+
+.hint { margin: 8px 0 0; color: #666; }
+
+.stage { display: flex; justify-content: center; }
+
+.canvasBox {
+  position: relative;
+  width: 760px;
+  height: 560px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.canvasBox canvas {
+  position: absolute;
+  inset: 0;
+  width: 760px;
+  height: 560px;
+}
+
+.curveOptions { display: grid; gap: 6px; margin: -4px 0 14px; }
+.curveOptions[hidden] { display: none; }
+
+.curveRow {
+  display: grid;
+  grid-template-columns: 52px repeat(3, 1fr);
+  gap: 6px;
+  align-items: end;
+}
+
+.curveRow label { margin: 0; font-size: 12px; color: #555; }
+.curveRow select { padding: 3px 4px; font-size: 13px; color: var(--ink); }
+
+.curveName {
+  font: italic 16px "Times New Roman", "Nanum Myeongjo", serif;
+  padding-bottom: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tools { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; }
+
+.tool {
+  padding: 6px 2px;
+  font-size: 12px;
+  background: #fff;
+  color: var(--accent);
+}
+
+.tool[aria-pressed="true"] { background: var(--accent); color: #fff; }
+
+kbd {
+  font: 11px "SF Mono", Menlo, Consolas, monospace;
+  padding: 0 3px;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  opacity: 0.8;
+}
+
+.guideList { display: grid; gap: 6px; margin-top: 8px; }
+
+.guideRow {
+  display: grid;
+  grid-template-columns: 1fr 64px;
+  gap: 6px;
+  align-items: center;
+  font-size: 13px;
+}
+
+.guideRow input {
+  font: italic 16px "Times New Roman", "Nanum Myeongjo", serif;
+  text-align: center;
+}
+
+#annotLayer.drawing { cursor: crosshair; }
+
+.fileBar { margin: -4px 0 14px; }
+.fileName {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fileButtons { margin-top: 0; }
+.fileButtons button { padding: 6px 4px; font-size: 13px; background: #fff; color: var(--accent); }
+.fileButtons button:hover { background: #eef3f8; }
+
+@media (max-width: 1100px) {
+  main { grid-template-columns: 1fr; }
+  .canvasBox, .canvasBox canvas { width: 100%; max-width: 760px; }
+}

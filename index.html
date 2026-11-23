@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>시험 그래프 도구</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <section class="panel">
+    <h1>시험 그래프 도구</h1>
+
+    <div class="fileBar">
+      <span id="fileName" class="fileName">새 그림</span>
+      <div class="buttons fileButtons">
+        <button id="fileNew" type="button">새로</button>
+        <button id="fileOpen" type="button" title="⌘/Ctrl+O">열기</button>
+        <button id="fileSave" type="button" title="⌘/Ctrl+S">저장</button>
+        <button id="fileSaveAs" type="button" title="⌘/Ctrl+Shift+S">다른 이름으로</button>
+      </div>
+      <p id="fileMessage" class="hint" hidden></p>
+      <input id="fileInput" type="file" accept=".json,application/json" hidden>
+    </div>
+
+    <label class="field">
+      <span>수식 (한 줄에 하나 · <code>f(x)=</code>, <code>y_1=</code> 로 이름을 붙일 수 있다)</span>
+      <textarea id="exprs" rows="5" spellcheck="false">y=x^2-3x+1</textarea>
+    </label>
+    <p id="error" class="error" hidden></p>
+    <div id="curveOptions" class="curveOptions" hidden></div>
+
+    <fieldset class="field">
+      <legend>보이는 범위</legend>
+      <div class="grid4">
+        <label>x 최소<input id="xmin" type="number" value="-5" step="any"></label>
+        <label>x 최대<input id="xmax" type="number" value="5" step="any"></label>
+        <label>y 최소<input id="ymin" type="number" value="-5" step="any"></label>
+        <label>y 최대<input id="ymax" type="number" value="5" step="any"></label>
+      </div>
+      <label class="checkbox"><input id="lockAspect" type="checkbox" checked> 가로세로 비율 고정</label>
+    </fieldset>
+
+    <fieldset class="field">
+      <legend>보조선</legend>
+      <div class="tools" role="toolbar" aria-label="보조선 도구">
+        <button type="button" class="tool" data-tool="select" aria-pressed="true">선택 <kbd>V</kbd></button>
+        <button type="button" class="tool" data-tool="line" aria-pressed="false">두 점 <kbd>L</kbd></button>
+        <button type="button" class="tool" data-tool="both" aria-pressed="false">양 축 <kbd>G</kbd></button>
+        <button type="button" class="tool" data-tool="x" aria-pressed="false">x축 <kbd>X</kbd></button>
+        <button type="button" class="tool" data-tool="y" aria-pressed="false">y축 <kbd>Y</kbd></button>
+      </div>
+      <p class="hint">점은 정수 좌표나 곡선 위로 붙는다. <kbd>Alt</kbd>+클릭은 정수 스냅을 끈다.
+        선택한 선은 <kbd>Delete</kbd> 로 지우고 <kbd>⌘/Ctrl</kbd>+<kbd>Z</kbd> 로 되돌린다.</p>
+      <div id="guideList" class="guideList"></div>
+      <p id="guideEmpty" class="hint">축에 닿는 보조선이 생기면 여기서 a, b 같은 기호를 넣을 수 있다.</p>
+    </fieldset>
+
+    <fieldset class="field">
+      <legend>좌표평면</legend>
+      <label>눈금
+        <select id="tickMode">
+          <option value="auto">자동</option>
+          <option value="manual">직접 지정</option>
+          <option value="pi">π 배수</option>
+        </select>
+      </label>
+      <div class="grid2">
+        <label>x 눈금 간격<input id="tickX" type="text" value="1" spellcheck="false"></label>
+        <label>y 눈금 간격<input id="tickY" type="text" value="1" spellcheck="false"></label>
+        <label>x 기호<input id="tickSymbolX" type="text" value="" placeholder="예: T" maxlength="6" spellcheck="false"></label>
+        <label>y 기호<input id="tickSymbolY" type="text" value="" placeholder="비우면 숫자" maxlength="6" spellcheck="false"></label>
+      </div>
+      <p class="hint">'직접 지정'에서 간격에 <code>pi/2</code> 같은 식을 쓸 수 있다. 기호를 넣으면 눈금이 T, 2T, 3T … 로 바뀐다.</p>
+      <label>격자
+        <select id="grid">
+          <option value="none">없음</option>
+          <option value="light">연한 모눈</option>
+          <option value="dots">점 격자</option>
+        </select>
+      </label>
+      <label class="checkbox"><input id="showArrow" type="checkbox" checked> 축 화살촉</label>
+      <label class="checkbox"><input id="showOrigin" type="checkbox" checked> 원점 O 표시</label>
+    </fieldset>
+
+    <fieldset class="field">
+      <legend>내보내기</legend>
+      <label>배경
+        <select id="background">
+          <option value="white">흰색</option>
+          <option value="transparent">투명</option>
+        </select>
+      </label>
+      <label>해상도 배수
+        <select id="scale">
+          <option value="1">1x</option>
+          <option value="2" selected>2x</option>
+          <option value="4">4x</option>
+        </select>
+      </label>
+      <div class="buttons">
+        <button id="savePng" type="button">PNG 저장</button>
+        <button id="copyPng" type="button">클립보드 복사</button>
+      </div>
+      <p id="exportMessage" class="hint" hidden></p>
+    </fieldset>
+  </section>
+
+  <section class="stage">
+    <div class="canvasBox">
+      <canvas id="fnLayer" width="760" height="560"></canvas>
+      <canvas id="annotLayer" width="760" height="560"></canvas>
+    </div>
+  </section>
+</main>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>

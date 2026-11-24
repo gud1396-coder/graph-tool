@@ -8,6 +8,13 @@ const SUBSCRIPT = ['₀', '₁', '₂', '₃', '₄', '₅', '₆', '₇', '₈'
 const RESERVED = new Set(['x', 'y', 'e']);
 
 export const LINE_DASH = [8, 5];
+// 곡선 선 종류. 곡선은 lineCap 'round' 로 그리므로 길이 0.1 마디가 동그란 점이 된다.
+export const LINE_DASHES = {
+  dashed: LINE_DASH,
+  dotted: [0.1, 5],
+  long: [16, 6],
+  dashdot: [14, 5, 0.1, 5],
+};
 
 export function toSubscript(digits) {
   return [...String(digits)].map((d) => SUBSCRIPT[d]).join('');
@@ -150,22 +157,27 @@ function callsDefined(expr, letters) {
   return letters.find((letter) => new RegExp(`(^|[^A-Za-z])${letter}\\s*\\(`).test(expr));
 }
 
+// 사용자에게 보이는 식 번호는 빈 줄을 건너뛴 식 순서(order)다. lineNo 는 입력칸의 줄 번호로,
+// 곡선 id 와 이름 없는 곡선의 설정 키에 쓰이므로 그대로 둔다.
 export function readLines(text) {
   const errors = [];
+  const fail = (order, message) => errors.push({ order, text: `식 ${order}${message}` });
   const split = [];
+  let order = 0;
 
   text.split('\n').forEach((raw, index) => {
     const line = raw.trim();
     if (line === '') return;
+    order += 1;
     const lineNo = index + 1;
     try {
       const parts = splitLine(line);
       const { expr, range, tail } = splitRange(parts.expr);
       // 라벨 '식 전체' 에는 범위를 넣지 않는다(시험지 관례).
       const display = tail ? line.slice(0, line.length - tail.length).trim() : line;
-      split.push({ lineNo, line, ...parts, expr, range, display });
+      split.push({ lineNo, order, line, ...parts, expr, range, display });
     } catch (error) {
-      errors.push(`${lineNo}번째 줄: ${error.message}`);
+      fail(order, `: ${error.message}`);
     }
   });
 
@@ -176,19 +188,20 @@ export function readLines(text) {
   for (const s of split) {
     if (s.key !== null) {
       if (firstLine.has(s.key)) {
-        errors.push(`${s.lineNo}번째 줄: ${s.name} 는 ${firstLine.get(s.key)}번째 줄에서 이미 정의했다`);
+        fail(s.order, `: ${s.name} 는 식 ${firstLine.get(s.key)} 에서 이미 정의했다`);
         continue;
       }
-      firstLine.set(s.key, s.lineNo);
+      firstLine.set(s.key, s.order);
     }
     const called = callsDefined(s.expr, letters);
     if (called) {
-      errors.push(`${s.lineNo}번째 줄: ${called}(x) 를 식 안에서 부르는 기능은 아직 없다`);
+      fail(s.order, `: ${called}(x) 를 식 안에서 부르는 기능은 아직 없다`);
       continue;
     }
     try {
       entries.push({
         lineNo: s.lineNo,
+        order: s.order,
         key: s.key ?? `#${s.lineNo}`,
         name: s.name,
         line: s.line,
@@ -199,15 +212,15 @@ export function readLines(text) {
       });
     } catch (error) {
       if (error instanceof ParseError) {
-        errors.push(`${s.lineNo}번째 줄, 문자 ${error.pos + 1} 근처: ${error.message}`);
+        fail(s.order, `, 문자 ${error.pos + 1} 근처: ${error.message}`);
       } else {
-        errors.push(`${s.lineNo}번째 줄: ${error.message}`);
+        fail(s.order, `: ${error.message}`);
       }
     }
   }
 
-  errors.sort((a, b) => parseInt(a, 10) - parseInt(b, 10));
-  return { entries, errors };
+  errors.sort((a, b) => a.order - b.order);
+  return { entries, errors: errors.map((e) => e.text) };
 }
 
 export function defaultOptions(entry) {
@@ -223,6 +236,7 @@ export function curveFromEntry(entry, options = {}) {
   return {
     id: `c${entry.lineNo - 1}`,
     lineNo: entry.lineNo,
+    order: entry.order,
     kind: 'explicit',
     name: entry.name,
     key: entry.key,
@@ -232,7 +246,7 @@ export function curveFromEntry(entry, options = {}) {
     style: {
       color: '#000',
       width: Number(opts.width),
-      dash: opts.dash === 'dashed' ? [...LINE_DASH] : null,
+      dash: LINE_DASHES[opts.dash] ? [...LINE_DASHES[opts.dash]] : null,
     },
     label: { text, at: null },
   };

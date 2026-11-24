@@ -105,6 +105,69 @@ export function hitTest(annots, vp, sx, sy, tolerancePx = 6) {
   return null;
 }
 
+// ---------- 끌어 옮기기 ----------
+// 점은 그 점을, 축에 닿는 보조선은 곡선 쪽 끝(축 위가 아닌 끝)을, 자유 보조선은 두 끝을 잡는다.
+
+function curveSide(annot) {
+  const onAxis = (q) => (annot.mark.axis === 'x' ? q.y === 0 : q.x === 0);
+  const index = annot.pts.findIndex((q) => !onAxis(q));
+  return index === -1 ? 0 : index;
+}
+
+function handlesOf(annot) {
+  if (annot.type === 'point') return [0];
+  if (annot.type !== 'guide') return [];
+  return annot.mark ? [curveSide(annot)] : [0, 1];
+}
+
+export function handleAt(annots, vp, sx, sy, tolerancePx = 8) {
+  for (let i = annots.length - 1; i >= 0; i -= 1) {
+    const annot = annots[i];
+    for (const index of handlesOf(annot)) {
+      const q = annot.pts[index];
+      if (Math.hypot(vp.x2s(q.x) - sx, vp.y2s(q.y) - sy) <= tolerancePx) return { id: annot.id, index };
+    }
+  }
+  return null;
+}
+
+// 축 보조선의 곡선 쪽 끝을 p 로 옮기고 발을 축에 다시 내린다. 축 기호 글자는 지킨다.
+// 축 위로 옮겨 선이 사라지면 null.
+function retarget(annot, p) {
+  const foot = annot.mark.axis === 'x' ? { x: p.x, y: 0 } : { x: 0, y: p.y };
+  const moved = makeGuide(annot.id, p, foot);
+  if (!moved || !moved.mark || moved.mark.axis !== annot.mark.axis) return null;
+  return { ...annot, pts: moved.pts, mark: { ...moved.mark, text: annot.mark.text } };
+}
+
+const samePoint = (a, b) => a.x === b.x && a.y === b.y;
+
+// 잡은 손잡이를 world 점 p 로 옮긴 새 배열. 옮길 수 없으면 받은 배열을 그대로 돌려준다.
+// 같은 곡선 쪽 점을 나누는 축 보조선(G 로 만든 짝)은 함께 옮긴다.
+export function moveHandle(annots, id, index, p, vp) {
+  const target = annots.find((a) => a.id === id);
+  if (!target) return annots;
+
+  if (target.type === 'point') {
+    return annots.map((a) => (a.id === id ? { ...a, pts: [{ x: p.x, y: p.y }] } : a));
+  }
+
+  if (target.mark) {
+    const from = target.pts[curveSide(target)];
+    const linked = (a) => a.id === id
+      || (a.type === 'guide' && a.mark && samePoint(a.pts[curveSide(a)], from));
+    const next = annots.map((a) => (linked(a) ? retarget(a, p) : a));
+    return next.some((a) => a === null) ? annots : next;
+  }
+
+  const other = target.pts[1 - index];
+  const end = straighten(other, p, vp);
+  const pts = index === 0 ? [end, { ...other }] : [{ ...other }, end];
+  const moved = makeGuide(id, pts[0], pts[1]);
+  if (!moved) return annots;
+  return annots.map((a) => (a.id === id ? { ...a, pts: moved.pts, mark: moved.mark } : a));
+}
+
 export function collectMarks(annots) {
   const out = [];
   for (const annot of annots) {

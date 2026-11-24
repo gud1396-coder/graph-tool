@@ -9,9 +9,11 @@ import {
   saveBackup, loadBackup, normalizeBackup, toGraphFile, fromGraphFile,
 } from './store.js';
 import { readLines, curveFromEntry, defaultOptions, parseStep } from './lines.js';
+import { layoutMath } from './typeset.js';
+import { PALETTE, insertSnippet, nextSlot } from './palette.js';
 import {
   snapPoint, straighten, makeGuide, guidesToAxes, hitTest, collectMarks,
-  drawAnnots, drawPreview, makePoint,
+  drawAnnots, drawPreview, makePoint, handleAt, moveHandle,
 } from './annot.js';
 import { makeHistory } from './history.js';
 
@@ -242,7 +244,9 @@ export function render() {
 // ---------- 곡선 설정 줄 ----------
 
 const OPTION_SELECTS = [
-  ['dash', '선', [['solid', '실선'], ['dashed', '점선']]],
+  ['dash', '선', [
+    ['solid', '실선'], ['dashed', '점선'], ['dotted', '짧은 점선'], ['long', '긴 점선'], ['dashdot', '일점쇄선'],
+  ]],
   ['width', '굵기', [['1', '1'], ['2', '2'], ['3', '3']]],
   ['label', '라벨', [['hidden', '숨김'], ['name', '이름'], ['full', '식 전체']]],
 ];
@@ -267,7 +271,7 @@ function optionRow(curve) {
 
   const title = document.createElement('span');
   title.className = 'curveName';
-  title.textContent = curve.name ?? `${curve.lineNo}번 줄`;
+  title.textContent = curve.name ?? `식 ${curve.order}`;
   row.append(title);
 
   for (const [field, caption, choices] of OPTION_SELECTS) {
@@ -369,7 +373,58 @@ function snapAt(event) {
   return snapPoint(sx, sy, screen.vp1, curveFns(), { free: event.altKey }).point;
 }
 
+// ---------- 끌어 옮기기 (선택 도구) ----------
+// 끄는 동안에는 주석 층만 다시 그린다. 축 기호 자리(곡선 층)는 놓을 때 한 번 그린다.
+// 되돌리기 기록도 놓을 때 한 번 남긴다.
+let drag = null;
+
+function onPointerDown(event) {
+  if (ui.tool !== 'select' || !screen.vp1 || event.button !== 0) return;
+  const { sx, sy } = pointerPos(event);
+  const handle = handleAt(state.annots, screen.vp1, sx, sy);
+  if (!handle) return;
+  drag = { ...handle, before: state.annots, moved: false };
+  ui.selectedId = handle.id;
+  el('annotLayer').setPointerCapture(event.pointerId);
+  el('annotLayer').classList.add('dragging');
+  drawAnnotLayer();
+}
+
+function dragTo(event) {
+  const pos = pointerPos(event);
+  if (!inPlot(pos.sx, pos.sy)) return;
+  const next = moveHandle(drag.before, drag.id, drag.index, snapAt(event), screen.vp1);
+  if (next === drag.before) return;
+  state.annots = next;
+  drag.moved = true;
+  drawAnnotLayer();
+}
+
+function onPointerUp(event) {
+  if (!drag) return;
+  const { before, moved } = drag;
+  drag = null;
+  const layer = el('annotLayer');
+  if (layer.hasPointerCapture(event.pointerId)) layer.releasePointerCapture(event.pointerId);
+  layer.classList.remove('dragging');
+  if (moved) {
+    history.record(before);
+    afterAnnotsChange();
+  } else {
+    drawAnnotLayer();
+  }
+}
+
 function onPointerMove(event) {
+  if (drag) {
+    dragTo(event);
+    return;
+  }
+  if (ui.tool === 'select' && screen.vp1) {
+    const { sx, sy } = pointerPos(event);
+    el('annotLayer').classList.toggle('grabbable', Boolean(handleAt(state.annots, screen.vp1, sx, sy)));
+    return;
+  }
   if (ui.tool === 'select' || !screen.vp1) return;
   const pos = pointerPos(event);
   if (!inPlot(pos.sx, pos.sy)) {
@@ -718,6 +773,80 @@ async function saveGraph(saveAs = false) {
   }
 }
 
+// ---------- LaTeX 팔레트 ----------
+
+const FACE_WIDTH = 40;
+const FACE_HEIGHT = 34;
+const FACE_FONT = 14;
+
+// 버튼 얼굴을 그림 라벨과 같은 조판기로 그린다. 빈 칸은 □.
+function drawFace(canvas, face) {
+  const ratio = window.devicePixelRatio || 1;
+  canvas.width = FACE_WIDTH * ratio;
+  canvas.height = FACE_HEIGHT * ratio;
+  canvas.style.width = `${FACE_WIDTH}px`;
+  canvas.style.height = `${FACE_HEIGHT}px`;
+  const ctx = canvas.getContext('2d');
+  const color = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#000';
+  ctx.save();
+  const box = layoutMath(ctx, face, { fontSize: FACE_FONT * ratio, slots: true });
+  const x = (canvas.width - box.width) / 2;
+  const y = (canvas.height + box.ascent - box.descent) / 2;
+  box.draw(ctx, x, y, { color, lineScale: ratio });
+  ctx.restore();
+}
+
+// 입력칸 글자만 바꾼다. 곡선은 input 이벤트가 지금 흐름대로 다시 그린다.
+function insertIntoExprs(snippet) {
+  const box = el('exprs');
+  const { insert, from, to, cursor } = insertSnippet(box.value, box.selectionStart, box.selectionEnd, snippet);
+  box.focus();
+  box.setSelectionRange(from, to);
+  // insertText 는 브라우저 실행 취소 기록에 남아 ⌘Z 로 되돌릴 수 있다.
+  const inserted = typeof document.execCommand === 'function' && document.execCommand('insertText', false, insert);
+  if (!inserted) {
+    box.setRangeText(insert, from, to, 'end');
+    box.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+  box.setSelectionRange(cursor, cursor);
+}
+
+function buildPalette() {
+  const bar = el('palette');
+  let group = null;
+  for (const item of PALETTE) {
+    if (group !== null && item.group !== group) {
+      const gap = document.createElement('span');
+      gap.className = 'paletteGap';
+      bar.append(gap);
+    }
+    group = item.group;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'paletteButton';
+    button.title = item.title;
+    button.setAttribute('aria-label', item.title);
+    const canvas = document.createElement('canvas');
+    button.append(canvas);
+    drawFace(canvas, item.face);
+    // 누를 때 입력칸의 포커스와 선택을 빼앗지 않는다.
+    button.addEventListener('mousedown', (event) => event.preventDefault());
+    button.addEventListener('click', () => insertIntoExprs(item.snippet));
+    bar.append(button);
+  }
+}
+
+// Tab: 같은 줄 커서 뒤에 빈 칸이 있으면 그리로, 없으면 기본 동작(다음 입력칸).
+function onExprsKeyDown(event) {
+  if (event.key !== 'Tab' || event.isComposing) return;
+  if (event.shiftKey || event.altKey || event.ctrlKey || event.metaKey) return;
+  const box = event.target;
+  const pos = nextSlot(box.value, box.selectionEnd);
+  if (pos === null) return;
+  event.preventDefault();
+  box.setSelectionRange(pos, pos);
+}
+
 // ---------- 배선 ----------
 
 function attach() {
@@ -726,6 +855,8 @@ function attach() {
     'tickMode', 'tickX', 'tickY', 'tickSymbolX', 'tickSymbolY', 'grid', 'showArrow', 'showOrigin',
     'background',
   ];
+  buildPalette();
+  el('exprs').addEventListener('keydown', onExprsKeyDown);
   const onChange = () => { render(); backupForm(); };
   for (const id of ids) {
     el(id).addEventListener('input', onChange);
@@ -737,6 +868,9 @@ function attach() {
     button.addEventListener('click', () => setTool(button.dataset.tool));
   }
   const layer = el('annotLayer');
+  layer.addEventListener('pointerdown', onPointerDown);
+  layer.addEventListener('pointerup', onPointerUp);
+  layer.addEventListener('pointercancel', onPointerUp);
   layer.addEventListener('pointermove', onPointerMove);
   layer.addEventListener('pointerleave', onPointerLeave);
   layer.addEventListener('click', onCanvasClick);

@@ -166,6 +166,8 @@ kbd {
 }
 
 #annotLayer.drawing { cursor: crosshair; }
+#annotLayer.grabbable { cursor: grab; }
+#annotLayer.dragging { cursor: grabbing; }
 
 .fileBar { margin: -4px 0 14px; }
 .fileName {
@@ -184,3 +186,24 @@ kbd {
   main { grid-template-columns: 1fr; }
   .canvasBox, .canvasBox canvas { width: 100%; max-width: 760px; }
 }
+
+.exprsLabel { margin-bottom: 4px; }
+
+.palette { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 2px; }
+
+.paletteButton {
+  flex: 0 0 auto;
+  width: 42px;
+  height: 36px;
+  padding: 0;
+  border-color: var(--line);
+  background: #fff;
+}
+
+.paletteButton:hover { background: #eef3f8; filter: none; }
+
+.paletteButton canvas { display: block; margin: 0 auto; }
+
+.paletteGap { width: 8px; }
+
+.paletteHint { margin: 0 0 4px; font-size: 12px; }

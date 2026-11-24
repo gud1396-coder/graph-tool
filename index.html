@@ -23,10 +23,12 @@
       <input id="fileInput" type="file" accept=".json,application/json" hidden>
     </div>
 
-    <label class="field">
-      <span>수식 (한 줄에 하나 · <code>f(x)=</code>, <code>y_1=</code> 로 이름을 붙일 수 있다)</span>
+    <div class="field">
+      <label class="exprsLabel" for="exprs">수식 (한 줄에 하나 · <code>f(x)=</code>, <code>y_1=</code> 로 이름을 붙일 수 있다)</label>
+      <div id="palette" class="palette" role="toolbar" aria-label="LaTeX 입력 도우미"></div>
+      <p class="hint paletteHint">버튼을 누르면 커서 자리에 들어간다 · <kbd>Tab</kbd> 으로 다음 칸</p>
       <textarea id="exprs" rows="5" spellcheck="false">y=x^2-3x+1</textarea>
-    </label>
+    </div>
     <p id="error" class="error" hidden></p>
     <div id="curveOptions" class="curveOptions" hidden></div>
 
@@ -53,6 +55,7 @@
         <button type="button" class="tool" data-tool="pointOpen" aria-pressed="false">○ 점 <kbd>O</kbd></button>
       </div>
       <p class="hint">점은 정수 좌표나 곡선 위로 붙는다. <kbd>Alt</kbd>+클릭은 정수 스냅을 끈다.
+        선택 도구로 점과 보조선 끝을 끌어 옮긴다.
         선택한 선은 <kbd>Delete</kbd> 로 지우고 <kbd>⌘/Ctrl</kbd>+<kbd>Z</kbd> 로 되돌린다.</p>
       <div id="guideList" class="guideList"></div>
       <p id="guideEmpty" class="hint">축에 닿는 보조선이 생기면 a, b 같은 기호를, 점을 찍으면 A, B 같은 이름을 여기서 넣을 수 있다.</p>

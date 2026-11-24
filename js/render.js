@@ -1,6 +1,8 @@
 // 좌표평면과 곡선을 그린다. Canvas 2D 컨텍스트는 인자로 받으며
 // 이 파일은 document 나 window 에 접근하지 않는다.
 
+import { layoutMath } from './typeset.js';
+
 const SUPERSCRIPT = {
   0: '⁰', 1: '¹', 2: '²', 3: '³', 4: '⁴',
   5: '⁵', 6: '⁶', 7: '⁷', 8: '⁸', 9: '⁹',
@@ -246,16 +248,17 @@ export function drawAxes(ctx, vp, axis, marks = []) {
   // 눈금 선과 라벨
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
+  // 축 이름에 자리를 내준 끝 숫자는 눈금 선도 그리지 않는다(2026-11-24 사용자 요청).
   for (const x of ticksFor(vp.view.xmin, vp.view.xmax, stepX)) {
     const sx = vp.x2s(x);
+    const labeled = Math.abs(x) > 1e-9 && !markAt('x', x);
+    const text = labeled ? tickLabel(x, stepX, symbolX, axis.tickMode) : '';
+    if (labeled && hidesX(text, sx)) continue;
     ctx.beginPath();
     ctx.moveTo(sx, originY - tick);
     ctx.lineTo(sx, originY + tick);
     ctx.stroke();
-    if (Math.abs(x) > 1e-9 && !markAt('x', x)) {
-      const text = tickLabel(x, stepX, symbolX, axis.tickMode);
-      if (!hidesX(text, sx)) ctx.fillText(text, sx, originY + tick + gap);
-    }
+    if (labeled) ctx.fillText(text, sx, originY + tick + gap);
   }
   // 보조선 기호. 눈금 간격에 걸리지 않는 값이면 눈금선도 새로 긋는다.
   for (const m of marks) {
@@ -272,13 +275,13 @@ export function drawAxes(ctx, vp, axis, marks = []) {
   ctx.textBaseline = 'middle';
   for (const y of ticksFor(vp.view.ymin, vp.view.ymax, stepY)) {
     const sy = vp.y2s(y);
+    const labeled = Math.abs(y) > 1e-9 && !markAt('y', y);
+    if (labeled && hidesY(sy)) continue;
     ctx.beginPath();
     ctx.moveTo(originX - tick, sy);
     ctx.lineTo(originX + tick, sy);
     ctx.stroke();
-    if (Math.abs(y) > 1e-9 && !markAt('y', y) && !hidesY(sy)) {
-      ctx.fillText(tickLabel(y, stepY, symbolY, axis.tickMode), originX - tick - gap, sy);
-    }
+    if (labeled) ctx.fillText(tickLabel(y, stepY, symbolY, axis.tickMode), originX - tick - gap, sy);
   }
   for (const m of marks) {
     if (m.axis !== 'y' || !inY(m.value)) continue;
@@ -397,7 +400,8 @@ export function drawEndpoints(ctx, vp, points, { color = '#000', lineScale = 1, 
 
 const LABEL_GAP = 6;
 const LABEL_MARGIN = 4;
-const LABEL_FONT_SIZE = 15;
+// 2026-11-24 사용자 요청으로 15px(약 11pt) → 18px(약 13.5pt).
+const LABEL_FONT_SIZE = 18;
 
 export function drawCurveLabel(ctx, vp, segments, label, style = DEFAULT_CURVE_STYLE) {
   if (!label || !label.text) return;
@@ -413,30 +417,26 @@ export function drawCurveLabel(ctx, vp, segments, label, style = DEFAULT_CURVE_S
 
   const scale = style.lineScale ?? 1;
   const fontSize = style.fontSize ?? LABEL_FONT_SIZE * scale;
-  const text = toSuperscript(label.text);
-
   ctx.save();
-  ctx.fillStyle = style.color;
-  ctx.font = MATH_FONT(fontSize);
-  ctx.textAlign = 'left';
-  ctx.textBaseline = 'bottom';
+  // 조판 상자 크기로 자리를 정한다. 분수처럼 높은 라벨도 위아래 넘침을 따진다.
+  const box = layoutMath(ctx, label.text, { fontSize });
 
   // 정의역을 제한하지 않은 곡선의 마지막 샘플점은 정확히 화면 오른쪽 끝이다.
   // 거기서 오른쪽으로 더 밀면 라벨이 캔버스 밖에 찍혀 아예 보이지 않는다.
   // 넘치면 앵커 왼쪽에 붙이고, 그래도 넘치면 화면 안으로 당긴다.
   const gap = LABEL_GAP * scale;
   const margin = LABEL_MARGIN * scale;
-  const textWidth = ctx.measureText(text).width;
   const anchorX = vp.x2s(anchor.x);
   let sx = anchorX + gap;
   const { plot } = vp;
-  if (sx + textWidth > plot.right - margin) sx = anchorX - gap - textWidth;
-  sx = Math.max(plot.left + margin, Math.min(sx, plot.right - margin - textWidth));
-  const sy = Math.max(
-    plot.top + margin + fontSize,
+  if (sx + box.width > plot.right - margin) sx = anchorX - gap - box.width;
+  sx = Math.max(plot.left + margin, Math.min(sx, plot.right - margin - box.width));
+  const height = box.ascent + box.descent;
+  const bottom = Math.max(
+    plot.top + margin + height,
     Math.min(vp.y2s(anchor.y) - gap, plot.bottom - margin),
   );
 
-  ctx.fillText(text, sx, sy);
+  box.draw(ctx, sx, bottom - box.descent, { color: style.color, lineScale: scale });
   ctx.restore();
 }

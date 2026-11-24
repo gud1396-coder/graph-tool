@@ -41,6 +41,13 @@ const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const isPoint = (q) => isObj(q) && Number.isFinite(q.x) && Number.isFinite(q.y);
 
 // 읽을 수 없는 보조선은 버린다. 하나라도 어긋나면 그리는 쪽이 던져 화면이 멈춘다.
+function isValidPoint(a) {
+  return isObj(a) && a.type === 'point'
+    && Array.isArray(a.pts) && a.pts.length === 1 && a.pts.every(isPoint)
+    && isObj(a.style) && typeof a.style.filled === 'boolean'
+    && typeof a.text === 'string' && (a.mark === null || a.mark === undefined);
+}
+
 function isValidGuide(a) {
   if (!isObj(a) || a.type !== 'guide') return false;
   if (!Array.isArray(a.pts) || a.pts.length !== 2 || !a.pts.every(isPoint)) return false;
@@ -57,7 +64,7 @@ export function normalizeBackup(payload) {
   return {
     form,
     curveStyles: isPlainObject ? curveStyles : {},
-    annots: Array.isArray(annots) ? annots.filter(isValidGuide) : [],
+    annots: Array.isArray(annots) ? annots.filter((a) => isValidGuide(a) || isValidPoint(a)) : [],
   };
 }
 

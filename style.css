@@ -131,7 +131,7 @@ button:hover { filter: brightness(1.08); }
   white-space: nowrap;
 }
 
-.tools { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; }
+.tools { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
 
 .tool {
   padding: 6px 2px;

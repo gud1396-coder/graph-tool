@@ -11,7 +11,7 @@ import {
 import { readLines, curveFromEntry, defaultOptions, parseStep } from './lines.js';
 import {
   snapPoint, straighten, makeGuide, guidesToAxes, hitTest, collectMarks,
-  drawAnnots, drawPreview,
+  drawAnnots, drawPreview, makePoint,
 } from './annot.js';
 import { makeHistory } from './history.js';
 
@@ -187,7 +187,10 @@ function endpointsOf(curve) {
 // 내보낼 때는 보조선까지 한 장에 그린다. 스냅 표시·미리보기·선택 강조는 넣지 않는다.
 function drawExport(ctx, width, height, pixelRatio) {
   drawScene(ctx, width, height, pixelRatio);
-  drawAnnots(ctx, sceneViewport(width, height, pixelRatio), state.annots, { lineScale: pixelRatio });
+  drawAnnots(ctx, sceneViewport(width, height, pixelRatio), state.annots, {
+    lineScale: pixelRatio,
+    background: state.canvas.background,
+  });
 }
 
 // 주석 층만 다시 그린다. 마우스를 움직일 때는 이것만 부른다.
@@ -418,12 +421,20 @@ function onCanvasClick(event) {
     return;
   }
 
+  if (ui.tool === 'pointFilled' || ui.tool === 'pointOpen') {
+    commitAnnots([...state.annots, makePoint(nextId(), p, ui.tool === 'pointFilled')]);
+    return;
+  }
+
   const added = guidesToAxes(p, ui.tool, nextId);
   if (added.length > 0) commitAnnots([...state.annots, ...added]);
 }
 
 // 한글 입력 상태에서는 event.key 가 자모로 온다. 글쇠 위치(code)로 가른다.
-const TOOL_CODES = { KeyV: 'select', KeyL: 'line', KeyG: 'both', KeyX: 'x', KeyY: 'y' };
+const TOOL_CODES = {
+  KeyV: 'select', KeyL: 'line', KeyG: 'both', KeyX: 'x', KeyY: 'y',
+  KeyP: 'pointFilled', KeyO: 'pointOpen',
+};
 
 function onKeyDown(event) {
   // 파일 단축키는 입력 칸에서도 받는다.
@@ -461,9 +472,9 @@ function onKeyDown(event) {
   }
 }
 
-// 축에 닿는 보조선마다 기호 칸 한 줄.
+// 축에 닿는 보조선마다 기호 칸, 점마다 이름 칸 한 줄.
 function renderGuideList() {
-  const rows = state.annots.filter((a) => a.mark);
+  const rows = state.annots.filter((a) => a.mark || a.type === 'point');
   el('guideList').replaceChildren(...rows.map(guideRow));
   el('guideEmpty').hidden = rows.length > 0;
 }
@@ -472,16 +483,23 @@ function guideRow(annot, index) {
   const row = document.createElement('div');
   row.className = 'guideRow';
 
-  // 축 위가 아닌 쪽 끝이 곡선 쪽 점이다.
-  const onAxis = (q) => (annot.mark.axis === 'x' ? q.y === 0 : q.x === 0);
-  const p = annot.pts.find((q) => !onAxis(q)) ?? annot.pts[0];
+  const isPoint = annot.type === 'point';
   const caption = document.createElement('span');
-  caption.textContent = `${CIRCLED[index] ?? `${index + 1}.`} (${fmt(p.x)}, ${fmt(p.y)}) → ${annot.mark.axis} 축`;
+  const number = CIRCLED[index] ?? `${index + 1}.`;
+  if (isPoint) {
+    const [p] = annot.pts;
+    caption.textContent = `${number} ${annot.style.filled ? '●' : '○'} (${fmt(p.x)}, ${fmt(p.y)})`;
+  } else {
+    // 축 위가 아닌 쪽 끝이 곡선 쪽 점이다.
+    const onAxis = (q) => (annot.mark.axis === 'x' ? q.y === 0 : q.x === 0);
+    const p = annot.pts.find((q) => !onAxis(q)) ?? annot.pts[0];
+    caption.textContent = `${number} (${fmt(p.x)}, ${fmt(p.y)}) → ${annot.mark.axis} 축`;
+  }
 
   const input = document.createElement('input');
   input.type = 'text';
-  input.value = annot.mark.text;
-  input.placeholder = '기호';
+  input.value = isPoint ? annot.text : annot.mark.text;
+  input.placeholder = isPoint ? '이름' : '기호';
   input.maxLength = 8;
   input.spellcheck = false;
 
@@ -489,10 +507,13 @@ function guideRow(annot, index) {
   let before = null;
   input.addEventListener('focus', () => { before = state.annots; });
   input.addEventListener('input', () => {
-    state.annots = state.annots.map((a) => (
-      a.id === annot.id ? { ...a, mark: { ...a.mark, text: input.value } } : a
-    ));
-    render();
+    state.annots = state.annots.map((a) => {
+      if (a.id !== annot.id) return a;
+      return isPoint ? { ...a, text: input.value } : { ...a, mark: { ...a.mark, text: input.value } };
+    });
+    // 점 이름은 주석 층에만 있다. 보조선 기호는 축(곡선 층)을 다시 그려야 한다.
+    if (isPoint) drawAnnotLayer();
+    else render();
     backupForm();
   });
   input.addEventListener('change', () => {

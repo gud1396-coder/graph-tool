@@ -73,6 +73,21 @@ export function guidesToAxes(p, mode, makeId) {
   return out;
 }
 
+// ---------- 점 ●/○ ----------
+// 곡선 끝점(render.js 의 ENDPOINT_RADIUS)과 같은 크기로 그린다.
+export const POINT_RADIUS = 3.5;
+
+export function makePoint(id, p, filled) {
+  return {
+    id,
+    type: 'point',
+    pts: [{ x: p.x, y: p.y }],
+    style: { color: '#000', filled: Boolean(filled) },
+    text: '',
+    mark: null,
+  };
+}
+
 function distanceToSegment(px, py, ax, ay, bx, by) {
   const vx = bx - ax;
   const vy = by - ay;
@@ -83,7 +98,7 @@ function distanceToSegment(px, py, ax, ay, bx, by) {
 
 export function hitTest(annots, vp, sx, sy, tolerancePx = 6) {
   for (let i = annots.length - 1; i >= 0; i -= 1) {
-    const [a, b] = annots[i].pts;
+    const [a, b = a] = annots[i].pts;
     const d = distanceToSegment(sx, sy, vp.x2s(a.x), vp.y2s(a.y), vp.x2s(b.x), vp.y2s(b.y));
     if (d <= tolerancePx) return annots[i].id;
   }
@@ -112,13 +127,60 @@ function clipToPlot(ctx, vp) {
   ctx.clip();
 }
 
-export function drawAnnots(ctx, vp, annots, { lineScale = 1, selectedId = null, highlightId = null } = {}) {
+const POINT_FONT = (size) => `italic ${size}px "Times New Roman", "Nanum Myeongjo", serif`;
+const POINT_FONT_SIZE = 15;
+
+// 빈 점의 속은 배경으로 채운다. 투명 배경이면 지운다(내보낼 때). 화면의 주석 층은
+// 곡선 층 위에 겹쳐 있으므로 호출하는 쪽이 'white' 를 넘긴다.
+function drawPoint(ctx, vp, annot, color, lineScale, background) {
+  const [p] = annot.pts;
+  const sx = vp.x2s(p.x);
+  const sy = vp.y2s(p.y);
+  const r = POINT_RADIUS * lineScale;
+  ctx.setLineDash([]);
+  ctx.lineWidth = 1.5 * lineScale;
+  ctx.beginPath();
+  ctx.arc(sx, sy, r, 0, Math.PI * 2);
+  if (annot.style.filled) {
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = color;
+    ctx.fill();
+  } else {
+    if (background === 'transparent') {
+      ctx.globalCompositeOperation = 'destination-out';
+      ctx.fillStyle = '#000';
+    } else {
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.fillStyle = background;
+    }
+    ctx.fill();
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.strokeStyle = color;
+    ctx.stroke();
+  }
+  const name = (annot.text ?? '').trim();
+  if (name) {
+    ctx.fillStyle = color;
+    ctx.font = POINT_FONT(POINT_FONT_SIZE * lineScale);
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(name, sx + r + 2 * lineScale, sy - r - 1 * lineScale);
+  }
+}
+
+export function drawAnnots(ctx, vp, annots, {
+  lineScale = 1, selectedId = null, highlightId = null, background = 'white',
+} = {}) {
   ctx.save();
   clipToPlot(ctx, vp);
   ctx.lineCap = 'butt';
   for (const annot of annots) {
-    if (annot.type !== 'guide') continue;
     const marked = annot.id === selectedId || annot.id === highlightId;
+    if (annot.type === 'point') {
+      drawPoint(ctx, vp, annot, marked ? ACCENT : annot.style.color, lineScale, background);
+      continue;
+    }
+    if (annot.type !== 'guide') continue;
     const [a, b] = annot.pts;
     ctx.strokeStyle = marked ? ACCENT : annot.style.color;
     ctx.lineWidth = annot.style.width * lineScale * (marked ? 2 : 1);

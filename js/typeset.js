@@ -402,10 +402,13 @@ export function layoutMath(ctx, text, { fontSize, slots = false }) {
     const eq = text.indexOf('=');
     if (eq >= 0) {
       const left = text.slice(0, eq);
-      if (!NAME_LEFT.test(left)) throw new Unsupported();
+      // 좌변이 이름이면 그대로, 식이면(음함수 x^2+y^2=4) 식으로 조판한다.
+      const leftBox = NAME_LEFT.test(left)
+        ? plainRow(ctx, left.trim(), fontSize)
+        : expression(ctx, left, fontSize, slots);
       const gap = space(SPACE.rel * fontSize);
       return row([
-        plainRow(ctx, left.trim(), fontSize),
+        leftBox,
         gap, glyph(ctx, '=', fontSize), gap,
         expression(ctx, text.slice(eq + 1), fontSize, slots),
       ]);

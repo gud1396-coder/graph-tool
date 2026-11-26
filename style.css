@@ -207,3 +207,30 @@ kbd {
 .paletteGap { width: 8px; }
 
 .paletteHint { margin: 0 0 4px; font-size: 12px; }
+
+/* 미적분 장식 */
+.decoButtons button { flex: 1; }
+.decoList { display: grid; gap: 6px; margin-top: 8px; }
+.decoRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  align-items: center;
+  padding: 6px 8px;
+  border: 1px solid #e2e2e2;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #555;
+}
+.decoRow .decoKind { font-weight: 600; color: var(--ink); min-width: 48px; }
+.decoRow select { width: auto; padding: 3px 4px; font-size: 13px; color: var(--ink); max-width: 120px; }
+.decoRow input[type="text"] { width: 56px; padding: 3px 4px; font-size: 13px; }
+.decoRow label { margin: 0; display: inline-flex; gap: 3px; align-items: center; }
+.decoRow label.checkbox { margin: 0; display: inline-flex; gap: 3px; align-items: center; }
+.decoRow .decoRemove {
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding: 2px 8px;
+  background: #fff;
+  color: var(--accent);
+}

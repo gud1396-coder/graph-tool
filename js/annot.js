@@ -12,14 +12,33 @@ const tidy = (v) => {
   return Object.is(r, -0) ? 0 : r;
 };
 
-export function snapPoint(sx, sy, vp, curveFns = [], { free = false } = {}) {
+// 정수와 눈금 간격의 배수 가운데 w 에 더 가까운 값. 눈금이 π/2 이면 π/2 자리에도
+// 붙는다(sin x 의 π/2 에 보조선을 둘 수 있게). 간격이 정수면 정수만 본다.
+export function snapToGrid(w, step = null) {
+  const whole = Math.round(w);
+  if (!(step > 0) || Number.isInteger(step)) return whole;
+  const multiple = Math.round(w / step) * step;
+  return Math.abs(multiple - w) < Math.abs(whole - w) ? multiple : whole;
+}
+
+// steps 는 { x, y } 눈금 간격(없으면 정수만). 곡선 함수는 (x, 마우스 y) 를 받는다.
+// 음함수 곡선은 한 x 에 y 가 여럿이라 마우스에 가까운 쪽을 고르는 데 둘째 인자를 쓴다.
+// points 는 정확히 붙을 특별한 점(교점·접점). 화면에서 CURVE_SNAP_PX 안이면 가장 먼저 붙는다.
+export function snapPoint(sx, sy, vp, curveFns = [], { free = false, steps = null, points = [] } = {}) {
+  let nearest = null;
+  for (const p of points) {
+    const d = Math.hypot(vp.x2s(p.x) - sx, vp.y2s(p.y) - sy);
+    if (d <= CURVE_SNAP_PX && (nearest === null || d < nearest.d)) nearest = { d, p };
+  }
+  if (nearest) return { point: { x: tidy(nearest.p.x), y: tidy(nearest.p.y) }, kind: 'point' };
+
   const wx = vp.s2x(sx);
   const wy = vp.s2y(sy);
-  const x0 = tidy(free ? round2(wx) : Math.round(wx));
+  const x0 = tidy(free ? round2(wx) : snapToGrid(wx, steps?.x));
 
   let best = null;
   for (const fn of curveFns) {
-    const y = fn(x0);
+    const y = fn(x0, wy);
     if (!Number.isFinite(y)) continue;
     const d = Math.hypot(vp.x2s(x0) - sx, vp.y2s(y) - sy);
     if (d <= CURVE_SNAP_PX && (best === null || d < best.d)) best = { d, y };
@@ -27,7 +46,7 @@ export function snapPoint(sx, sy, vp, curveFns = [], { free = false } = {}) {
 
   if (best) return { point: { x: x0, y: tidy(best.y) }, kind: 'curve' };
   if (free) return { point: { x: x0, y: tidy(round2(wy)) }, kind: 'free' };
-  return { point: { x: x0, y: tidy(Math.round(wy)) }, kind: 'grid' };
+  return { point: { x: x0, y: tidy(snapToGrid(wy, steps?.y)) }, kind: 'grid' };
 }
 
 // 화면에서 잰 기울기가 수평·수직에서 toleranceDeg 안이면 축에 평행하게 맞춘다.

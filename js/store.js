@@ -57,14 +57,28 @@ function isValidGuide(a) {
     && Number.isFinite(a.mark.value) && typeof a.mark.text === 'string';
 }
 
+// 미적분 장식(접선·넓이·교점). 값 칸은 글자(pi/2 같은 식)로 저장한다.
+// 예전 파일에는 decos 가 없다. 읽을 수 없는 항목은 버린다.
+const DECO_TEXT_FIELDS = {
+  tangent: ['curve', 'at'],
+  area: ['curve', 'against', 'from', 'to'],
+  intersect: ['curve', 'with'],
+};
+
+function isValidDeco(d) {
+  if (!isObj(d) || typeof d.id !== 'string' || !(d.type in DECO_TEXT_FIELDS)) return false;
+  return DECO_TEXT_FIELDS[d.type].every((field) => typeof d[field] === 'string');
+}
+
 export function normalizeBackup(payload) {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
-  const { curveStyles, annots, ...form } = payload;
+  const { curveStyles, annots, decos, ...form } = payload;
   const isPlainObject = curveStyles && typeof curveStyles === 'object' && !Array.isArray(curveStyles);
   return {
     form,
     curveStyles: isPlainObject ? curveStyles : {},
     annots: Array.isArray(annots) ? annots.filter((a) => isValidGuide(a) || isValidPoint(a)) : [],
+    decos: Array.isArray(decos) ? decos.filter(isValidDeco) : [],
   };
 }
 
@@ -76,7 +90,7 @@ export const GRAPH_FILE_FORMAT = 'exam-graph-tool';
 export const GRAPH_FILE_VERSION = 1;
 
 export function toGraphFile(payload, savedAt = new Date().toISOString()) {
-  const { curveStyles = {}, annots = [], ...form } = payload;
+  const { curveStyles = {}, annots = [], decos = [], ...form } = payload;
   return {
     format: GRAPH_FILE_FORMAT,
     version: GRAPH_FILE_VERSION,
@@ -84,6 +98,7 @@ export function toGraphFile(payload, savedAt = new Date().toISOString()) {
     form,
     curveStyles,
     annots,
+    decos,
   };
 }
 
@@ -102,5 +117,7 @@ export function fromGraphFile(text) {
     throw new Error('더 새 버전의 그래프 도구에서 만든 파일이다. 도구를 새로 고친 뒤 다시 연다');
   }
   const form = data.form && typeof data.form === 'object' && !Array.isArray(data.form) ? data.form : {};
-  return normalizeBackup({ ...form, curveStyles: data.curveStyles, annots: data.annots });
+  return normalizeBackup({
+    ...form, curveStyles: data.curveStyles, annots: data.annots, decos: data.decos,
+  });
 }

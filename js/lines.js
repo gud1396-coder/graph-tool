@@ -157,6 +157,22 @@ function callsDefined(expr, letters) {
   return letters.find((letter) => new RegExp(`(^|[^A-Za-z])${letter}\\s*\\(`).test(expr));
 }
 
+// 'A = B' 를 A - B 의 AST 로 만든다. 오류 위치는 등호 뒤 식이면 그만큼 밀어 준다.
+export function parseImplicit(expr) {
+  const eq = expr.indexOf('=');
+  if (expr.indexOf('=', eq + 1) !== -1) throw new Error('등호가 둘 이상이다. 한 줄에 식 하나만 쓴다');
+  const vars = ['x', 'y'];
+  const left = parse(expr.slice(0, eq), vars);
+  let right;
+  try {
+    right = parse(expr.slice(eq + 1), vars);
+  } catch (error) {
+    if (error instanceof ParseError) throw new ParseError(error.message, error.pos + eq + 1);
+    throw error;
+  }
+  return { type: 'binary', op: '-', left, right };
+}
+
 // 사용자에게 보이는 식 번호는 빈 줄을 건너뛴 식 순서(order)다. lineNo 는 입력칸의 줄 번호로,
 // 곡선 id 와 이름 없는 곡선의 설정 키에 쓰이므로 그대로 둔다.
 export function readLines(text) {
@@ -199,6 +215,8 @@ export function readLines(text) {
       continue;
     }
     try {
+      // 이름 없이 등호가 남은 줄은 음함수(x^2+y^2=4, x=3)다.
+      const implicit = s.key === null && s.expr.includes('=');
       entries.push({
         lineNo: s.lineNo,
         order: s.order,
@@ -208,7 +226,8 @@ export function readLines(text) {
         display: s.display,
         range: s.range,
         expr: s.expr,
-        ast: parse(s.expr),
+        kind: implicit ? 'implicit' : 'explicit',
+        ast: implicit ? parseImplicit(s.expr) : parse(s.expr),
       });
     } catch (error) {
       if (error instanceof ParseError) {
@@ -237,7 +256,7 @@ export function curveFromEntry(entry, options = {}) {
     id: `c${entry.lineNo - 1}`,
     lineNo: entry.lineNo,
     order: entry.order,
-    kind: 'explicit',
+    kind: entry.kind ?? 'explicit',
     name: entry.name,
     key: entry.key,
     expr: entry.expr,
@@ -264,5 +283,20 @@ export function parseStep(text) {
   if (!Number.isFinite(value) || value <= 0) {
     throw new Error(`'${src}' 을 읽을 수 없다. 0보다 큰 수나 pi/2 같은 식을 넣는다`);
   }
+  return value;
+}
+
+// 장식의 x 값처럼 아무 실수나 받는 칸. pi/2, -1/3 같은 식도 받는다.
+export function parseValue(text) {
+  const src = String(text ?? '').trim();
+  if (src === '') throw new Error('값을 넣어야 한다');
+  let value;
+  try {
+    // x 를 NaN 으로 두어 x 가 든 식은 NaN 이 되게 한다.
+    value = evalAt(src, NaN);
+  } catch {
+    value = NaN;
+  }
+  if (!Number.isFinite(value)) throw new Error(`'${src}' 을 읽을 수 없다. 2, -1/2, pi/3 처럼 쓴다`);
   return value;
 }

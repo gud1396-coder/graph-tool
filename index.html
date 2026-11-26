@@ -24,13 +24,25 @@
     </div>
 
     <div class="field">
-      <label class="exprsLabel" for="exprs">수식 (한 줄에 하나 · <code>f(x)=</code>, <code>y_1=</code> 로 이름을 붙일 수 있다)</label>
+      <label class="exprsLabel" for="exprs">수식 (한 줄에 하나 · <code>f(x)=</code>, <code>y_1=</code> 로 이름을 붙일 수 있다 · <code>x^2+y^2=4</code> 같은 음함수도 된다)</label>
       <div id="palette" class="palette" role="toolbar" aria-label="LaTeX 입력 도우미"></div>
       <p class="hint paletteHint">버튼을 누르면 커서 자리에 들어간다 · <kbd>Tab</kbd> 으로 다음 칸</p>
       <textarea id="exprs" rows="5" spellcheck="false">y=x^2-3x+1</textarea>
     </div>
     <p id="error" class="error" hidden></p>
     <div id="curveOptions" class="curveOptions" hidden></div>
+
+    <fieldset class="field">
+      <legend>미적분 장식</legend>
+      <div class="buttons decoButtons">
+        <button id="addTangent" type="button">+ 접선</button>
+        <button id="addArea" type="button">+ 넓이</button>
+        <button id="addIntersect" type="button">+ 교점</button>
+      </div>
+      <div id="decoList" class="decoList"></div>
+      <p id="decoEmpty" class="hint">곡선을 골라 접선·넓이(적분 영역)·교점을 더한다. x 값에 <code>pi/2</code> 같은 식을 쓸 수 있다.
+        음함수(<code>x^2+y^2=4</code>)는 장식에 쓸 수 없다.</p>
+    </fieldset>
 
     <fieldset class="field">
       <legend>보이는 범위</legend>

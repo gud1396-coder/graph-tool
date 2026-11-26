@@ -112,30 +112,44 @@ const ARROW_LENGTH = 9;
 const ARROW_HALF_WIDTH = 4;
 const TICK_HALF = 4;
 
-function stepsFor(vp, axis) {
+// 한 축에 그리는 눈금의 최대 개수. 직접 지정 간격이 0.00001 처럼 작으면 눈금이
+// 수십만 개가 되어 화면이 멈춘다. 넘치면 간격을 정수배로 넓힌다(기호 T 는 kT 로 남는다).
+export const MAX_TICKS = 200;
+
+export function capStep(step, span, max = MAX_TICKS) {
+  if (!(step > 0) || !(span > 0)) return step;
+  const count = span / step;
+  return count > max ? step * Math.ceil(count / max) : step;
+}
+
+// 눈금 간격. 그리기와 보조선 스냅(app.js)이 같은 값을 쓴다.
+export function tickSteps(vp, axis) {
   // 눈금 간격은 1배 기준 픽셀로 정한다. 장치 픽셀을 그대로 쓰면 해상도 배수나
   // 레티나 화면에서 눈금이 배수만큼 빽빽해져 화면과 내보낸 그림이 달라진다.
   const s = axis.lineScale ?? 1;
   const plotW = (vp.plot.right - vp.plot.left) / s;
   const plotH = (vp.plot.bottom - vp.plot.top) / s;
+  const spanX = vp.view.xmax - vp.view.xmin;
+  const spanY = vp.view.ymax - vp.view.ymin;
   if (axis.tickMode === 'pi') {
     const half = Math.PI / 2;
-    const span = vp.view.xmax - vp.view.xmin;
     // 범위가 넓으면 π/2 눈금이 너무 빽빽해진다.
-    const unit = (span / half) > 16 ? Math.PI : half;
-    return { stepX: unit, stepY: unit };
+    const unit = (spanX / half) > 16 ? Math.PI : half;
+    return { stepX: capStep(unit, spanX), stepY: capStep(unit, spanY) };
   }
   if (axis.tickMode === 'manual') {
     return {
-      stepX: axis.tickX || autoStep(vp.view.xmax - vp.view.xmin, plotW),
-      stepY: axis.tickY || autoStep(vp.view.ymax - vp.view.ymin, plotH),
+      stepX: capStep(axis.tickX || autoStep(spanX, plotW), spanX),
+      stepY: capStep(axis.tickY || autoStep(spanY, plotH), spanY),
     };
   }
   return {
-    stepX: autoStep(vp.view.xmax - vp.view.xmin, plotW),
-    stepY: autoStep(vp.view.ymax - vp.view.ymin, plotH),
+    stepX: autoStep(spanX, plotW),
+    stepY: autoStep(spanY, plotH),
   };
 }
+
+const stepsFor = tickSteps;
 
 export function clearCanvas(ctx, width, height, background = 'white') {
   ctx.save();
@@ -317,6 +331,34 @@ export function drawAxes(ctx, vp, axis, marks = []) {
   ctx.restore();
 }
 
+// y 축 왼쪽 글자(눈금 숫자·기호·축 이름)가 캔버스 왼쪽 끝을 몇 px 넘는지 잰다.
+// 원점이 범위 밖이라 y 축이 왼쪽 가장자리에 붙으면 `-3π/2` 같은 긴 글자가 여백보다 길어
+// 잘린다. app.js 가 이 값만큼 왼쪽 여백을 늘린다. 넘지 않으면 0.
+export function yLabelOverflow(ctx, vp, axis, marks = []) {
+  const { stepY } = stepsFor(vp, axis);
+  const { plot } = vp;
+  const s = axis.lineScale ?? 1;
+  const originX = Math.max(plot.left, Math.min(vp.x2s(0), plot.right));
+  const right = originX - (TICK_HALF + 3) * s;
+  const manual = axis.tickMode === 'manual';
+  const symbolY = manual ? axis.symbolY : '';
+  const markAt = (v) => marks.some((m) => m.axis === 'y' && Math.abs(m.value - v) < 1e-9);
+
+  const texts = [axis.labelY];
+  for (const y of ticksFor(vp.view.ymin, vp.view.ymax, stepY)) {
+    if (Math.abs(y) > 1e-9 && !markAt(y)) texts.push(tickLabel(y, stepY, symbolY, axis.tickMode));
+  }
+  for (const m of marks) {
+    if (m.axis === 'y' && m.value >= vp.view.ymin - 1e-9 && m.value <= vp.view.ymax + 1e-9) texts.push(m.text);
+  }
+
+  ctx.save();
+  ctx.font = MATH_FONT(axis.fontSize);
+  const widest = Math.max(0, ...texts.map((t) => ctx.measureText(t).width));
+  ctx.restore();
+  return Math.max(0, widest - (right - 2 * s));
+}
+
 export const DEFAULT_CURVE_STYLE = { color: '#000', width: 2, dash: null };
 
 // 화면 높이의 몇 배까지만 Canvas 에 넘긴다. 1e9 같은 값을 그대로 주면
@@ -403,40 +445,163 @@ const LABEL_MARGIN = 4;
 // 2026-11-24 사용자 요청으로 15px(약 11pt) → 18px(약 13.5pt).
 const LABEL_FONT_SIZE = 18;
 
-export function drawCurveLabel(ctx, vp, segments, label, style = DEFAULT_CURVE_STYLE) {
-  if (!label || !label.text) return;
+// ---------- 곡선 라벨 자리 ----------
+// 라벨마다 자리 후보를 여럿 만들고, 먼저 놓은 라벨·곡선·축과 덜 겹치는 자리를 고른다.
+// 0번 후보는 예전 자리(곡선 끝 오른쪽 위, 넘치면 왼쪽)다. 거기가 아무것도 가리지 않으면
+// 늘 그 자리를 쓴다. 그래서 곡선이 하나뿐인 그림은 예전과 같게 나온다.
 
-  let anchor = label.at;
-  if (!anchor) {
-    // 가장 오른쪽 덩어리의 마지막 점에 붙인다.
-    const drawable = segments.filter((seg) => seg.length > 0);
-    if (drawable.length === 0) return;
-    const last = drawable[drawable.length - 1];
-    anchor = last[last.length - 1];
-  }
+const LABEL_HIT = { label: 10000, curve: 100, axis: 30 };
+const MAX_ANCHORS = 12;
 
-  const scale = style.lineScale ?? 1;
-  const fontSize = style.fontSize ?? LABEL_FONT_SIZE * scale;
-  ctx.save();
-  // 조판 상자 크기로 자리를 정한다. 분수처럼 높은 라벨도 위아래 넘침을 따진다.
-  const box = layoutMath(ctx, label.text, { fontSize });
-
-  // 정의역을 제한하지 않은 곡선의 마지막 샘플점은 정확히 화면 오른쪽 끝이다.
-  // 거기서 오른쪽으로 더 밀면 라벨이 캔버스 밖에 찍혀 아예 보이지 않는다.
-  // 넘치면 앵커 왼쪽에 붙이고, 그래도 넘치면 화면 안으로 당긴다.
+function labelRect(vp, anchor, box, scale, h, v) {
   const gap = LABEL_GAP * scale;
   const margin = LABEL_MARGIN * scale;
-  const anchorX = vp.x2s(anchor.x);
-  let sx = anchorX + gap;
   const { plot } = vp;
-  if (sx + box.width > plot.right - margin) sx = anchorX - gap - box.width;
-  sx = Math.max(plot.left + margin, Math.min(sx, plot.right - margin - box.width));
   const height = box.ascent + box.descent;
-  const bottom = Math.max(
-    plot.top + margin + height,
-    Math.min(vp.y2s(anchor.y) - gap, plot.bottom - margin),
-  );
+  const ax = vp.x2s(anchor.x);
+  const ay = vp.y2s(anchor.y);
+  let x;
+  if (h === 0) {
+    // 예전 규칙: 오른쪽에 붙이고, 넘치면 앵커 왼쪽에.
+    x = ax + gap;
+    if (x + box.width > plot.right - margin) x = ax - gap - box.width;
+  } else {
+    x = h > 0 ? ax + gap : ax - gap - box.width;
+  }
+  x = Math.max(plot.left + margin, Math.min(x, plot.right - margin - box.width));
+  const rawBottom = v > 0 ? ay - gap : ay + gap + height;
+  const bottom = Math.max(plot.top + margin + height, Math.min(rawBottom, plot.bottom - margin));
+  return { x, top: bottom - height, right: x + box.width, bottom };
+}
 
-  box.draw(ctx, sx, bottom - box.descent, { color: style.color, lineScale: scale });
+function inPlotPoint(vp, p) {
+  const sx = vp.x2s(p.x);
+  const sy = vp.y2s(p.y);
+  const { plot } = vp;
+  return Number.isFinite(sy) && sx >= plot.left && sx <= plot.right && sy >= plot.top && sy <= plot.bottom;
+}
+
+// 후보 앵커: 예전 앵커, 덩어리마다 화면 안 마지막·첫 점과 중간 몇 곳.
+function anchorsFor(vp, segments, label) {
+  if (label.at) return [label.at];
+  const drawable = segments.filter((seg) => seg.length > 0);
+  if (drawable.length === 0) return [];
+  const last = drawable[drawable.length - 1];
+  const out = [last[last.length - 1]];
+  for (let i = drawable.length - 1; i >= 0 && out.length < MAX_ANCHORS; i -= 1) {
+    const inside = drawable[i].filter((p) => inPlotPoint(vp, p));
+    if (inside.length === 0) continue;
+    const n = inside.length - 1;
+    for (const t of [1, 0.75, 0.5, 0.25, 0]) out.push(inside[Math.round(n * t)]);
+  }
+  return out.slice(0, MAX_ANCHORS);
+}
+
+const LABEL_FAR_COST = 0.2;
+
+function distanceToRect(px, py, r) {
+  const dx = Math.max(r.x - px, 0, px - r.right);
+  const dy = Math.max(r.top - py, 0, py - r.bottom);
+  return Math.hypot(dx, dy);
+}
+
+function overlapArea(a, b) {
+  const w = Math.min(a.right, b.right) - Math.max(a.x, b.x);
+  const h = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+  return w > 0 && h > 0 ? w * h : 0;
+}
+
+// 선분이 사각형을 지나는지(Liang–Barsky).
+function segmentHitsRect(x0, y0, x1, y1, r) {
+  let t0 = 0;
+  let t1 = 1;
+  const dx = x1 - x0;
+  const dy = y1 - y0;
+  const edges = [[-dx, x0 - r.x], [dx, r.right - x0], [-dy, y0 - r.top], [dy, r.bottom - y0]];
+  for (const [p, q] of edges) {
+    if (p === 0) {
+      if (q < 0) return false;
+    } else {
+      const t = q / p;
+      if (p < 0) { if (t > t1) return false; if (t > t0) t0 = t; }
+      else { if (t < t0) return false; if (t < t1) t1 = t; }
+    }
+  }
+  return true;
+}
+
+function curveHits(vp, rect, polylines) {
+  let hits = 0;
+  for (const seg of polylines) {
+    for (let i = 1; i < seg.length; i += 1) {
+      const a = seg[i - 1];
+      const b = seg[i];
+      const ay = clampScreenY(vp.y2s(a.y), vp.height);
+      const by = clampScreenY(vp.y2s(b.y), vp.height);
+      if (segmentHitsRect(vp.x2s(a.x), ay, vp.x2s(b.x), by, rect)) hits += 1;
+    }
+  }
+  return hits;
+}
+
+function axisHits(vp, rect) {
+  const { plot } = vp;
+  const originX = Math.max(plot.left, Math.min(vp.x2s(0), plot.right));
+  const originY = Math.max(plot.top, Math.min(vp.y2s(0), plot.bottom));
+  let hits = 0;
+  if (originY > rect.top && originY < rect.bottom) hits += 1;
+  if (originX > rect.x && originX < rect.right) hits += 1;
+  return hits;
+}
+
+// items: [{ segments, label, style }]. 돌려주는 값은 같은 순서의 { box, x, baseline, style } 또는 null.
+// obstacles 는 라벨이 피할 다른 선(world 점열 배열, 접선 등).
+export function placeCurveLabels(ctx, vp, items, { obstacles = [] } = {}) {
+  const polylines = [...items.flatMap((it) => it.segments ?? []), ...obstacles];
+  const placed = [];
+  return items.map(({ segments = [], label, style = DEFAULT_CURVE_STYLE }) => {
+    if (!label || !label.text) return null;
+    const anchors = anchorsFor(vp, segments, label);
+    if (anchors.length === 0) return null;
+    const scale = style.lineScale ?? 1;
+    const fontSize = style.fontSize ?? LABEL_FONT_SIZE * scale;
+    const box = layoutMath(ctx, label.text, { fontSize });
+
+    let best = null;
+    anchors.forEach((anchor, rank) => {
+      const quadrants = rank === 0 ? [[0, 1], [1, -1], [-1, 1], [-1, -1]] : [[1, 1], [-1, 1], [1, -1], [-1, -1]];
+      quadrants.forEach(([h, v], q) => {
+        const rect = labelRect(vp, anchor, box, scale, h, v);
+        let score = rank * 3 + q + (rank + q > 0 ? 1 : 0);
+        // 앵커에서 멀리 떨어진 자리는 어느 곡선 라벨인지 헷갈린다. 앵커가 화면 밖이라
+        // 테두리로 당겨진 자리(예전 0번 후보)가 여기서 밀린다.
+        score += LABEL_FAR_COST * distanceToRect(vp.x2s(anchor.x), clampScreenY(vp.y2s(anchor.y), vp.height), rect) / scale;
+        for (const other of placed) {
+          const area = overlapArea(rect, other);
+          if (area > 0) score += LABEL_HIT.label + area;
+        }
+        score += LABEL_HIT.curve * curveHits(vp, rect, polylines);
+        score += LABEL_HIT.axis * axisHits(vp, rect);
+        if (best === null || score < best.score) best = { score, rect };
+      });
+    });
+
+    placed.push(best.rect);
+    return { box, x: best.rect.x, baseline: best.rect.bottom - box.descent, style, scale };
+  });
+}
+
+export function drawCurveLabels(ctx, vp, items, options = {}) {
+  ctx.save();
+  const spots = placeCurveLabels(ctx, vp, items, options);
+  for (const spot of spots) {
+    if (!spot) continue;
+    spot.box.draw(ctx, spot.x, spot.baseline, { color: spot.style.color, lineScale: spot.scale });
+  }
   ctx.restore();
+  return spots;
+}
+
+export function drawCurveLabel(ctx, vp, segments, label, style = DEFAULT_CURVE_STYLE) {
+  drawCurveLabels(ctx, vp, [{ segments, label, style }]);
 }

@@ -21,6 +21,40 @@ export function snapToGrid(w, step = null) {
   return Math.abs(multiple - w) < Math.abs(whole - w) ? multiple : whole;
 }
 
+// center ± radius 안에서 g(x) = 0 인 x 중 center 에 가장 가까운 것(이분법). 없으면 null.
+// 점근선(1/x)처럼 부호만 바뀌고 값이 줄지 않는 자리는 버린다.
+const SOLVE_SLICES = 24;
+
+export function solveNear(g, center, radius) {
+  const lo = center - radius;
+  const step = (2 * radius) / SOLVE_SLICES;
+  let best = null;
+  let x0 = lo;
+  let g0 = g(x0);
+  for (let i = 1; i <= SOLVE_SLICES; i += 1) {
+    const x1 = lo + i * step;
+    const g1 = g(x1);
+    let root = null;
+    if (g0 === 0) root = x0;
+    else if (g1 === 0) root = x1;
+    else if (Number.isFinite(g0) && Number.isFinite(g1) && (g0 < 0) !== (g1 < 0)) {
+      let a = x0; let b = x1; let ga = g0;
+      for (let k = 0; k < 60; k += 1) {
+        const m = (a + b) / 2;
+        const gm = g(m);
+        if (!Number.isFinite(gm)) { a = NaN; break; }
+        if ((gm < 0) === (ga < 0)) { a = m; ga = gm; } else { b = m; }
+      }
+      const r = (a + b) / 2;
+      if (Number.isFinite(r) && Math.abs(g(r)) <= Math.max(Math.abs(g0), Math.abs(g1))) root = r;
+    }
+    if (root !== null && (best === null || Math.abs(root - center) < Math.abs(best - center))) best = root;
+    x0 = x1;
+    g0 = g1;
+  }
+  return best;
+}
+
 // steps 는 { x, y } 눈금 간격(없으면 정수만). 곡선 함수는 (x, 마우스 y) 를 받는다.
 // 음함수 곡선은 한 x 에 y 가 여럿이라 마우스에 가까운 쪽을 고르는 데 둘째 인자를 쓴다.
 // points 는 정확히 붙을 특별한 점(교점·접점). 화면에서 CURVE_SNAP_PX 안이면 가장 먼저 붙는다.
@@ -41,10 +75,22 @@ export function snapPoint(sx, sy, vp, curveFns = [], { free = false, steps = nul
     const y = fn(x0, wy);
     if (!Number.isFinite(y)) continue;
     const d = Math.hypot(vp.x2s(x0) - sx, vp.y2s(y) - sy);
-    if (d <= CURVE_SNAP_PX && (best === null || d < best.d)) best = { d, y };
+    if (d <= CURVE_SNAP_PX && (best === null || d < best.d)) best = { d, x: x0, y };
   }
 
-  if (best) return { point: { x: x0, y: tidy(best.y) }, kind: 'curve' };
+  // y 가 정수(또는 눈금 배수)인 곡선 위 점에도 붙는다. y=x^2-3x+1 과 y=3 이 만나는 점처럼
+  // x 가 정수가 아닌 자리에 점·보조선을 둘 수 있게. 더 가까운 쪽을 고른다(같으면 정수 x).
+  if (!free) {
+    const y0 = tidy(snapToGrid(wy, steps?.y));
+    for (const fn of curveFns) {
+      const x = solveNear((x1) => fn(x1, y0) - y0, wx, CURVE_SNAP_PX / vp.scale);
+      if (x === null) continue;
+      const d = Math.hypot(vp.x2s(x) - sx, vp.y2s(y0) - sy);
+      if (d <= CURVE_SNAP_PX && (best === null || d < best.d)) best = { d, x: tidy(x), y: y0 };
+    }
+  }
+
+  if (best) return { point: { x: best.x, y: tidy(best.y) }, kind: 'curve' };
   if (free) return { point: { x: x0, y: tidy(round2(wy)) }, kind: 'free' };
   return { point: { x: x0, y: tidy(snapToGrid(wy, steps?.y)) }, kind: 'grid' };
 }
